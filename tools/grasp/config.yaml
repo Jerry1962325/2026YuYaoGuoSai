@@ -44,8 +44,9 @@ detection:
 
 grasp:
   h_object: 25.0                       # [TODO: 现场标定] 末端抓取高度（mm，基座坐标系）
-  distance_offset_mm: 180.0            # [TODO: 现场标定] 视觉测距固定补偿（mm），加到 Y_cam 上
+  distance_offset_mm: 190.0            # [TODO: 现场标定] 视觉测距固定补偿（mm），加到 Y_cam 上
   approach_clearance_mm: 25.0          # 步骤1与物块的水平安全余量（mm）
+  approach_step_mm: 1.0                # 等高前进每步步长（mm），越小越平滑
   align_offset_threshold_mm: 10.0      # X_cam 偏移超过此值才触发横向对齐（mm）
   lost_frames_max: 10
   distance_avg_window: 20

@@ -13,7 +13,7 @@ import cv2
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from utils.ArmController        import ArmController
+from utils.ArmController        import ArmController, SAFE_ANGLE_3, SAFE_ANGLE_4, SAFE_ANGLE_5
 from utils.BlockDetection       import BlockDetection
 from utils.TargetTracker        import TargetTracker
 from utils.InspectionMemory     import InspectionMemory
@@ -207,9 +207,9 @@ def phase_3_align(ctx: dict, stable: dict) -> bool:
 def phase_4_approach_grasp(ctx: dict, stable: dict) -> bool:
     """
     两步接近抓取。
-    水平距离用视觉 Y_cam，高度固定用 h_object（Z_cam 误差大不可用）。
-    步骤1: 移到 dis_safe（Y_cam - clearance），下降到 h_object
-    步骤2: 前进到 Y_cam，grasp_with_verify
+    步骤1: 移到 dis_safe，下降到 h_object（单次 grap，允许弧线）
+    步骤2: 以固定步长 step_mm 等高插值前进到 dis_target，三轴同步写保持恒高
+    步骤3: grasp_with_verify 夹取
     """
     logger.info("=== phase_4: 接近与抓取 ===")
     arm   = ctx["arm"]
@@ -217,21 +217,22 @@ def phase_4_approach_grasp(ctx: dict, stable: dict) -> bool:
 
     cv2.destroyAllWindows()
 
-    clearance       = float(cfg_g["approach_clearance_mm"])
-    h_object        = float(cfg_g["h_object"])
-    dist_offset     = float(cfg_g.get("distance_offset_mm", 0.0))
+    clearance   = float(cfg_g["approach_clearance_mm"])
+    h_object    = float(cfg_g["h_object"])
+    dist_offset = float(cfg_g.get("distance_offset_mm", 0.0))
+    step_mm     = float(cfg_g.get("approach_step_mm", 5.0))
 
     X_cam, Y_cam, Z_cam = stable["pos_3d"]
     dis_target = Y_cam + dist_offset
     dis_safe   = max(dis_target - clearance, 30.0)
 
     logger.info("物块坐标（相机系）: X=%.1fmm  Y=%.1fmm  Z=%.1fmm", X_cam, Y_cam, Z_cam)
-    logger.info("IK 输入: dis_safe=%.1fmm → dis=%.1fmm, h=%.1fmm",
-                dis_safe, dis_target, h_object)
+    logger.info("IK 输入: dis_safe=%.1fmm → dis=%.1fmm, h=%.1fmm, step=%.1fmm",
+                dis_safe, dis_target, h_object, step_mm)
 
     from utils.RobotArm.three_Inverse_kinematics import Arm as IKArm
 
-    # 步骤 1：移到安全距离，下降到目标高度
+    # 步骤 1：移到安全距离并下降到目标高度（允许弧线运动）
     logger.info("步骤1: dis=%.1fmm  h=%.1fmm", dis_safe, h_object)
     ok = arm.grap(dis_safe, h_object)
     if not ok:
@@ -240,8 +241,30 @@ def phase_4_approach_grasp(ctx: dict, stable: dict) -> bool:
     a3, a4, a5 = IKArm(dis_safe, h_object)
     arm.wait_for_position({3: a3, 4: a4, 5: a5})
 
-    # 步骤 2：前进到物块位置并夹取
-    logger.info("步骤2: dis=%.1fmm  h=%.1fmm", dis_target, h_object)
+    # 步骤 2：等高插值前进，三轴同步写
+    import math
+    n_steps = max(1, math.ceil((dis_target - dis_safe) / step_mm))
+    logger.info("步骤2: 等高前进 %.1f→%.1fmm，%d步", dis_safe, dis_target, n_steps)
+    ph  = arm.packetHandler
+    spd = arm._speed
+    acc = arm._acc
+
+    for i in range(1, n_steps + 1):
+        dis_i = dis_safe + (dis_target - dis_safe) * i / n_steps
+        a3_i, a4_i, a5_i = IKArm(dis_i, h_object)
+        if not (SAFE_ANGLE_3[0] <= a3_i <= SAFE_ANGLE_3[1] and
+                SAFE_ANGLE_4[0] <= a4_i <= SAFE_ANGLE_4[1] and
+                SAFE_ANGLE_5[0] <= a5_i <= SAFE_ANGLE_5[1]):
+            logger.error("插值步 %d/%d IK 超出安全范围 (dis=%.1f)", i, n_steps, dis_i)
+            return False
+        ph.WritePosEx(3, a3_i, spd, acc)
+        ph.WritePosEx(4, a4_i, spd, acc)
+        ph.WritePosEx(5, a5_i, spd, acc)
+        arm.wait_for_position({3: a3_i, 4: a4_i, 5: a5_i})
+        logger.debug("插值步 %d/%d dis=%.1fmm", i, n_steps, dis_i)
+
+    # 步骤 3：执行夹取
+    logger.info("步骤3: 夹取 dis=%.1fmm  h=%.1fmm", dis_target, h_object)
     success = arm.grasp_with_verify(dis=dis_target, height=h_object)
     if success:
         logger.info("抓取成功")
