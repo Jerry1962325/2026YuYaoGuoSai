@@ -143,10 +143,11 @@ class ArmController:
             ph.WritePosEx(SCS_ID_3, SCS_3_TRANSPORT2_VALUE, spd, acc)
             ph.WritePosEx(SCS_ID_6, SCS_6_INIT_VALUE,       spd, acc)
 
-    def grap(self, dis: float, height: float = 30) -> bool:
+    def grap(self, dis: float, height: float = 30, keep_gripper: bool = False) -> bool:
         """
         逆运动学求解并下发关节目标。
         dis: 水平距离(mm)，height: 末端高度(mm)。
+        keep_gripper=True 时不改变夹爪位置。
         解超出安全范围时返回 False 并不执行。
         """
         angle_3, angle_4, angle_5 = Arm(dis, height)
@@ -161,7 +162,8 @@ class ArmController:
 
         ph = self.packetHandler
         spd, acc = self._speed, self._acc
-        ph.WritePosEx(SCS_ID_1, SCS_1_STATUS_VALUE, spd, acc)
+        if not keep_gripper:
+            ph.WritePosEx(SCS_ID_1, SCS_1_STATUS_VALUE, spd, acc)
         ph.WritePosEx(SCS_ID_2, SCS_2_STATUS_VALUE, spd, acc)
         ph.WritePosEx(SCS_ID_4, angle_4,            spd, acc)
         time.sleep(1)

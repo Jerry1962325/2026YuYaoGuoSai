@@ -224,25 +224,30 @@ def phase_4_approach_grasp(ctx: dict, stable: dict) -> bool:
 
     X_cam, Y_cam, Z_cam = stable["pos_3d"]
     dis_target = Y_cam + dist_offset
-    dis_safe   = max(dis_target - clearance, 30.0)
+    dis_safe   = dis_target - clearance
 
     logger.info("物块坐标（相机系）: X=%.1fmm  Y=%.1fmm  Z=%.1fmm", X_cam, Y_cam, Z_cam)
     logger.info("IK 输入: dis_safe=%.1fmm → dis=%.1fmm, h=%.1fmm, step=%.1fmm",
                 dis_safe, dis_target, h_object, step_mm)
 
     from utils.RobotArm.three_Inverse_kinematics import Arm as IKArm
-
-    # 步骤 1：移到安全距离并下降到目标高度（允许弧线运动）
-    logger.info("步骤1: dis=%.1fmm  h=%.1fmm", dis_safe, h_object)
-    ok = arm.grap(dis_safe, h_object)
-    if not ok:
-        logger.error("步骤1 IK 解超出范围 (dis=%.1f h=%.1f)", dis_safe, h_object)
-        return False
-    a3, a4, a5 = IKArm(dis_safe, h_object)
-    arm.wait_for_position({3: a3, 4: a4, 5: a5})
-
-    # 步骤 2：等高插值前进，三轴同步写
     import math
+
+    if dis_safe < 30.0 or dis_safe >= dis_target:
+        # 距离不足，跳过步骤1，直接从当前位姿开始等高前进
+        logger.info("步骤1跳过（dis_safe=%.1fmm 不足），从当前位置直接等高前进", dis_safe)
+        dis_safe = dis_target - step_mm   # 让步骤2至少走一步到 dis_target
+    else:
+        # 步骤 1：移到安全距离并下降到目标高度（允许弧线运动）
+        logger.info("步骤1: dis=%.1fmm  h=%.1fmm", dis_safe, h_object)
+        ok = arm.grap(dis_safe, h_object)
+        if not ok:
+            logger.error("步骤1 IK 解超出范围 (dis=%.1f h=%.1f)", dis_safe, h_object)
+            return False
+        a3, a4, a5 = IKArm(dis_safe, h_object)
+        arm.wait_for_position({3: a3, 4: a4, 5: a5})
+
+    # 步骤 2：等高插值前进，三轴同步写（无论步骤1是否执行都运行）
     n_steps = max(1, math.ceil((dis_target - dis_safe) / step_mm))
     logger.info("步骤2: 等高前进 %.1f→%.1fmm，%d步", dis_safe, dis_target, n_steps)
     ph  = arm.packetHandler
@@ -312,7 +317,7 @@ def phase_6_place(ctx: dict) -> bool:
 
     try:
         from utils.RobotArm.three_Inverse_kinematics import Arm as IKArm
-        ok = arm.grap(dis, height)
+        ok = arm.grap(dis, height, keep_gripper=True)
         if not ok:
             logger.error("放置 IK 解超出范围")
             return False

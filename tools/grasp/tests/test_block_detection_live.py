@@ -38,10 +38,13 @@ def main():
     detector = BlockDetection(cfg["detection"])
 
     print(f"打开摄像头: {device}")
-    cap = cv2.VideoCapture(device, cv2.CAP_V4L2)
+    cap = cv2.VideoCapture(device)
     if not cap.isOpened():
         print(f"错误：无法打开摄像头 {device}")
         sys.exit(1)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    print(f"分辨率: {int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}")
 
     print("按 q 退出，按 s 保存当前帧")
     while True:

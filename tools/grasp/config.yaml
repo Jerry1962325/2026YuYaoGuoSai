@@ -43,7 +43,7 @@ detection:
   block_real_width_mm: 40.0           # 长条实际宽度 40mm（题目给定，不变）
 
 grasp:
-  h_object: 25.0                       # [TODO: 现场标定] 末端抓取高度（mm，基座坐标系）
+  h_object: 35.0                       # [TODO: 现场标定] 末端抓取高度（mm，基座坐标系）
   distance_offset_mm: 190.0            # [TODO: 现场标定] 视觉测距固定补偿（mm），加到 Y_cam 上
   approach_clearance_mm: 25.0          # 步骤1与物块的水平安全余量（mm）
   approach_step_mm: 1.0                # 等高前进每步步长（mm），越小越平滑
